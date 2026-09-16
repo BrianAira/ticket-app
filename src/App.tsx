@@ -1,121 +1,136 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import { useMemo, useState } from 'react'
+import { useSelector } from 'react-redux'
+import {
+  Link,
+  Navigate,
+  Route,
+  Routes,
+  useNavigate,
+  useParams,
+} from 'react-router-dom'
+import { Navbar } from './components/Navbar'
+import { SeatGrid } from './components/SeatGrid'
+import { Timer } from './components/Timer'
+import { useEventSeats, useEvents, useHoldSeats } from './hooks/useApi'
+import { useSeatStream } from './hooks/useSeatStream'
+import type { RootState } from './store'
 
-function App() {
-  const [count, setCount] = useState(0)
+function HomePage() {
+  return (
+    <section className="mx-auto max-w-6xl px-6 py-16 text-slate-900 dark:text-slate-100 sm:py-24">
+      <div className="max-w-2xl space-y-6">
+        <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500 dark:text-slate-400">Reserva simple, en tiempo real</p>
+        <h1 className="text-4xl font-semibold tracking-tight sm:text-6xl">Tu lugar para cada experiencia.</h1>
+        <p className="max-w-xl text-lg leading-8 text-slate-600 dark:text-slate-300">Explora eventos, elige tus butacas y asegura tu lugar con una experiencia clara y sin fricciones.</p>
+        <Link className="inline-flex rounded-lg bg-slate-900 px-5 py-3 text-sm font-semibold text-white no-underline shadow-sm transition hover:bg-slate-700 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200" to="/eventos">Explorar eventos</Link>
+      </div>
+    </section>
+  )
+}
+
+function EventsPage() {
+  const eventsQuery = useEvents()
+  if (eventsQuery.isLoading) return <p className="mx-auto w-[calc(100%-3rem)] max-w-5xl py-12 text-slate-700 dark:text-slate-200">Cargando eventos...</p>
+  if (eventsQuery.isError) return <p className="mx-auto w-[calc(100%-3rem)] max-w-5xl py-12 text-red-600 dark:text-red-400">No se pudieron cargar los eventos.</p>
+  return (
+    <section className="mx-auto max-w-6xl px-6 py-12 text-slate-900 dark:text-slate-100">
+      <div className="mb-8 border-b border-slate-200 pb-6 dark:border-slate-800">
+        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Agenda</p>
+        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Próximos eventos</h1>
+      </div>
+      <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {eventsQuery.data?.map((event) => (
+          <Link className="group block rounded-xl border border-slate-200 bg-white p-5 text-slate-800 no-underline shadow-sm transition hover:-translate-y-0.5 hover:border-slate-400 hover:shadow-md dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 dark:hover:border-slate-600" key={event.id} to={`/eventos/${event.id}`}>
+            <h2 className="text-xl font-semibold tracking-tight group-hover:text-slate-600 dark:group-hover:text-slate-300">{event.name}</h2>
+            <p className="mt-2 text-slate-600 dark:text-slate-300">{event.room_name}</p>
+            <time className="mt-1 block text-sm text-slate-500 dark:text-slate-400" dateTime={event.starts_at}>
+              {new Date(event.starts_at).toLocaleString()}
+            </time>
+          </Link>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function EventPage() {
+  const { eventId } = useParams()
+  const parsedEventId = Number(eventId)
+  const navigate = useNavigate()
+  const activeUser = useSelector((state: RootState) => state.user.selectedUser)
+  const seatsQuery = useEventSeats(parsedEventId)
+  const stream = useSeatStream(parsedEventId)
+  const holdSeats = useHoldSeats()
+  const [selectedSeatIds, setSelectedSeatIds] = useState<number[]>([])
+  const data = stream.data ?? seatsQuery.data
+  const selectedSeats = useMemo(
+    () => data?.seats.filter((seat) => selectedSeatIds.includes(seat.id)) ?? [],
+    [data?.seats, selectedSeatIds],
+  )
+
+  if (!Number.isInteger(parsedEventId)) return <Navigate to="/eventos" replace />
+  if (seatsQuery.isLoading && !data) return <p className="mx-auto w-[calc(100%-3rem)] max-w-5xl py-12 text-slate-700 dark:text-slate-200">Cargando sala...</p>
+  if (seatsQuery.isError && !data) return <p className="mx-auto w-[calc(100%-3rem)] max-w-5xl py-12 text-red-600 dark:text-red-400">No se pudo cargar la sala.</p>
+  if (!data) return null
+
+  const toggleSeat = (seatId: number) => {
+    setSelectedSeatIds((ids) =>
+      ids.includes(seatId) ? ids.filter((id) => id !== seatId) : [...ids, seatId],
+    )
+  }
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div >
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
+    <section className="mx-auto max-w-6xl px-6 py-12 text-slate-900 dark:text-slate-100">
+      <button className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 shadow-sm transition hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800" type="button" onClick={() => navigate('/eventos')}>← Volver a eventos</button>
+      <div className="mb-8 mt-8">
+        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Detalle del evento</p>
+        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">{data.event.name}</h1>
+      </div>
+      <p className="mt-2 text-slate-600 dark:text-slate-300">{data.room.name}</p>
+      <SeatGrid
+        seats={data.seats}
+        columns={data.room.columns}
+        activeUserId={activeUser?.id}
+        selectedSeatIds={selectedSeatIds}
+        onSeatClick={(seat) => toggleSeat(seat.id)}
+      />
+      <div className="mt-6 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <p className="text-sm text-slate-600 dark:text-slate-300"><span className="font-semibold text-slate-900 dark:text-white">{selectedSeats.length}</span> butaca(s) seleccionada(s)</p>
+        {selectedSeats.some((seat) => seat.expires_at) && (
+          <p>Retención: <Timer expiresAt={selectedSeats.find((seat) => seat.expires_at)?.expires_at} /></p>
+        )}
         <button
           type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
+          className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200"
+          disabled={!activeUser || selectedSeatIds.length === 0 || holdSeats.isPending}
+          onClick={() => {
+            if (activeUser) {
+              holdSeats.mutate({
+                eventId: parsedEventId,
+                request: { user_id: activeUser.id, seat_ids: selectedSeatIds },
+              })
+            }
+          }}
         >
-          Count is {count}
+          {holdSeats.isPending ? 'Reteniendo...' : 'Retener butacas'}
         </button>
-      </section>
-
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
+      </div>
+    </section>
+  )
+}
+function App() {
+  return (
+    <div className="min-h-screen bg-slate-50 text-slate-900 transition-colors dark:bg-slate-950 dark:text-slate-100">
+      <Navbar />
+      <main>
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/eventos" element={<EventsPage />} />
+          <Route path="/eventos/:eventId" element={<EventPage />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </main>
+    </div>
   )
 }
 

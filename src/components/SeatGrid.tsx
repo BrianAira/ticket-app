@@ -1,0 +1,61 @@
+import type { Seat } from '../types/api'
+
+interface SeatGridProps {
+  seats: Seat[]
+  columns: number
+  activeUserId?: string
+  selectedSeatIds?: number[]
+  onSeatClick?: (seat: Seat) => void
+}
+
+export function SeatGrid({
+  seats,
+  columns,
+  activeUserId,
+  selectedSeatIds = [],
+  onSeatClick,
+}: SeatGridProps) {
+  const selected = new Set(selectedSeatIds)
+
+  return (
+    <div className="mx-auto w-full max-w-3xl rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div className="mb-8 border-b-2 border-slate-300 pb-3 text-center dark:border-slate-700">
+        <span className="text-[11px] font-semibold tracking-[0.3em] text-slate-400 dark:text-slate-500">
+          ESCENARIO
+        </span>
+      </div>
+      <div
+        className="mx-auto grid max-w-2xl gap-2"
+        aria-label="Mapa de butacas"
+        style={{ gridTemplateColumns: `repeat(${columns}, minmax(3rem, 1fr))` }}
+      >
+        {seats.map((seat) => {
+        const isMine = seat.held_by_user_id === activeUserId
+        const isSelected = selected.has(seat.id)
+        const isAvailable = seat.status === 'AVAILABLE' || isMine
+        const className = isMine || isSelected
+          ? 'aspect-square rounded-lg border border-emerald-600 bg-emerald-600 text-xs font-medium text-white shadow-sm transition hover:bg-emerald-700 dark:border-emerald-500 dark:bg-emerald-600 dark:hover:bg-emerald-500'
+          : seat.status === 'AVAILABLE'
+            ? 'aspect-square rounded-lg border border-slate-300 bg-slate-100 text-xs font-medium text-slate-700 shadow-sm transition hover:bg-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
+            : seat.status === 'HELD'
+              ? 'aspect-square cursor-not-allowed rounded-lg border border-slate-300 bg-slate-300 text-xs font-medium text-slate-500 dark:border-slate-700 dark:bg-slate-700 dark:text-slate-400'
+              : 'aspect-square cursor-not-allowed rounded-lg border border-rose-800/50 bg-rose-900/30 text-xs font-medium text-rose-500 dark:border-rose-800/50 dark:bg-rose-900/30 dark:text-rose-400'
+
+        return (
+          <button
+            key={seat.id}
+            type="button"
+            className={className}
+            style={{ gridColumnStart: seat.x, gridRowStart: seat.y }}
+            disabled={!onSeatClick || !isAvailable}
+            onClick={() => onSeatClick?.(seat)}
+            aria-label={`Butaca ${seat.label}, ${seat.status}`}
+          >
+            {seat.label}
+          </button>
+        )
+        })}
+      </div>
+    </div>
+  )
+}
