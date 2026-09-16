@@ -9,11 +9,13 @@ import {
   useParams,
 } from 'react-router-dom'
 import { Navbar } from './components/Navbar'
+import { ConflictModal } from './components/ConflictModal'
 import { SeatGrid } from './components/SeatGrid'
 import { Timer } from './components/Timer'
 import { useEventSeats, useEvents, useHoldSeats } from './hooks/useApi'
 import { useSeatStream } from './hooks/useSeatStream'
 import type { RootState } from './store'
+import { ApiClientError } from './api/apiClient'
 
 function HomePage() {
   return (
@@ -67,6 +69,9 @@ function EventPage() {
     () => data?.seats.filter((seat) => selectedSeatIds.includes(seat.id)) ?? [],
     [data?.seats, selectedSeatIds],
   )
+  const conflictError = holdSeats.error instanceof ApiClientError && holdSeats.error.status === 409
+    ? holdSeats.error
+    : null
 
   if (!Number.isInteger(parsedEventId)) return <Navigate to="/eventos" replace />
   if (seatsQuery.isLoading && !data) return <p className="mx-auto w-[calc(100%-3rem)] max-w-5xl py-12 text-slate-700 dark:text-slate-200">Cargando sala...</p>
@@ -115,6 +120,11 @@ function EventPage() {
           {holdSeats.isPending ? 'Reteniendo...' : 'Retener butacas'}
         </button>
       </div>
+      <ConflictModal
+        error={conflictError}
+        eventId={parsedEventId}
+        onClose={() => holdSeats.reset()}
+      />
     </section>
   )
 }
