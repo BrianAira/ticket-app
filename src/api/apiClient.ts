@@ -258,6 +258,7 @@ export class InMemoryApiClient implements ApiClient {
           seat.expires_at = null
         }
       }
+
       return cloneHold(hold)
     })
     eventIds.forEach((eventId) => this.publishSeatsUpdated(eventId))
@@ -330,3 +331,5 @@ export class InMemoryApiClient implements ApiClient {
     return new ApiClientError(status, { code, message, ...extra })
   }
 }
+
+export const apiClient = new InMemoryApiClient()
