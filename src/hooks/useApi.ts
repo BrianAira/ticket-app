@@ -20,7 +20,7 @@ import type {
 export const queryKeys = {
   users: ['users'] as const,
   events: ['events'] as const,
-  eventSeats: (eventId: number) => ['events', eventId, 'seats'] as const,
+  eventSeats: (eventId: number) => ['seats', eventId] as const,
 }
 
 export const useUsers = (

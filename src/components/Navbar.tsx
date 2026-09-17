@@ -1,20 +1,16 @@
-import { useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import { useUsers } from '../hooks/useApi'
+import { useTheme } from '../hooks/useTheme'
 import type { RootState, AppDispatch } from '../store'
 import { setSelectedUser } from '../store/userSlice'
-import { toggleTheme } from '../store/uiSlice'
+import { setTheme } from '../store/uiSlice'
 
 export function Navbar() {
   const dispatch = useDispatch<AppDispatch>()
   const { selectedUser } = useSelector((state: RootState) => state.user)
-  const theme = useSelector((state: RootState) => state.ui.theme)
+  const { theme, toggleTheme } = useTheme()
   const usersQuery = useUsers()
-
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', theme === 'dark')
-  }, [theme])
 
   return (
     <header className="border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
@@ -54,7 +50,11 @@ export function Navbar() {
         <button
           className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
           type="button"
-          onClick={() => dispatch(toggleTheme())}
+          onClick={() => {
+            const nextTheme = theme === 'light' ? 'dark' : 'light'
+            toggleTheme()
+            dispatch(setTheme(nextTheme))
+          }}
         >
           {theme === 'light' ? 'Modo oscuro' : 'Modo claro'}
         </button>

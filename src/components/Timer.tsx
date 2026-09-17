@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 
 interface TimerProps {
   expiresAt: string | null | undefined
+  onExpire?: () => void
 }
 
 const getRemainingSeconds = (expiresAt: string | null | undefined): number => {
@@ -11,21 +12,31 @@ const getRemainingSeconds = (expiresAt: string | null | undefined): number => {
   return Math.max(0, Math.ceil((Date.parse(expiresAt) - Date.now()) / 1000))
 }
 
-export function Timer({ expiresAt }: TimerProps) {
+export function Timer({ expiresAt, onExpire }: TimerProps) {
   const [seconds, setSeconds] = useState(() => getRemainingSeconds(expiresAt))
 
   useEffect(() => {
+    let expired = false
+    const checkExpiration = () => {
+      const remaining = getRemainingSeconds(expiresAt)
+      setSeconds(remaining)
+      if (remaining === 0 && expiresAt && !expired) {
+        expired = true
+        onExpire?.()
+      }
+    }
+
     const updateTimeout = window.setTimeout(() => {
-      setSeconds(getRemainingSeconds(expiresAt))
+      checkExpiration()
     }, 0)
     const intervalId = window.setInterval(() => {
-      setSeconds(getRemainingSeconds(expiresAt))
+      checkExpiration()
     }, 1000)
     return () => {
       window.clearTimeout(updateTimeout)
       window.clearInterval(intervalId)
     }
-  }, [expiresAt])
+  }, [expiresAt, onExpire])
 
   const minutes = Math.floor(seconds / 60)
   const remainingSeconds = seconds % 60

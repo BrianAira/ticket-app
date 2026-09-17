@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useSelector } from 'react-redux'
 import {
   Link,
@@ -12,23 +13,17 @@ import { Navbar } from './components/Navbar'
 import { ConflictModal } from './components/ConflictModal'
 import { SeatGrid } from './components/SeatGrid'
 import { Timer } from './components/Timer'
-import { useEventSeats, useEvents, useHoldSeats } from './hooks/useApi'
+import {
+  useConfirmHolds,
+  useEventSeats,
+  useEvents,
+  useHoldSeats,
+  useReleaseHold,
+} from './hooks/useApi'
 import { useSeatStream } from './hooks/useSeatStream'
 import type { RootState } from './store'
 import { ApiClientError } from './api/apiClient'
 
-function HomePage() {
-  return (
-    <section className="mx-auto max-w-6xl px-6 py-16 text-slate-900 dark:text-slate-100 sm:py-24">
-      <div className="max-w-2xl space-y-6">
-        <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500 dark:text-slate-400">Reserva simple, en tiempo real</p>
-        <h1 className="text-4xl font-semibold tracking-tight sm:text-6xl">Tu lugar para cada experiencia.</h1>
-        <p className="max-w-xl text-lg leading-8 text-slate-600 dark:text-slate-300">Explora eventos, elige tus butacas y asegura tu lugar con una experiencia clara y sin fricciones.</p>
-        <Link className="inline-flex rounded-lg bg-slate-900 px-5 py-3 text-sm font-semibold text-white no-underline shadow-sm transition hover:bg-slate-700 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200" to="/eventos">Explorar eventos</Link>
-      </div>
-    </section>
-  )
-}
 
 function EventsPage() {
   const eventsQuery = useEvents()
@@ -59,11 +54,15 @@ function EventPage() {
   const { eventId } = useParams()
   const parsedEventId = Number(eventId)
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const activeUser = useSelector((state: RootState) => state.user.selectedUser)
   const seatsQuery = useEventSeats(parsedEventId)
   const stream = useSeatStream(parsedEventId)
   const holdSeats = useHoldSeats()
+  const confirmHolds = useConfirmHolds()
+  const releaseHold = useReleaseHold()
   const [selectedSeatIds, setSelectedSeatIds] = useState<number[]>([])
+  const activeUserId = activeUser?.id
   const data = stream.data ?? seatsQuery.data
   const selectedSeats = useMemo(
     () => data?.seats.filter((seat) => selectedSeatIds.includes(seat.id)) ?? [],
@@ -71,7 +70,51 @@ function EventPage() {
   )
   const conflictError = holdSeats.error instanceof ApiClientError && holdSeats.error.status === 409
     ? holdSeats.error
-    : null
+    : confirmHolds.error instanceof ApiClientError && confirmHolds.error.status === 409
+      ? confirmHolds.error
+      : null
+  const userHeldSeats = data?.seats.filter(
+    (seat) => seat.status === 'HELD' && seat.held_by_user_id === activeUserId,
+  ) ?? []
+  const handleHoldConfirmed = () => {
+    setSelectedSeatIds([])
+    void queryClient.invalidateQueries({
+      queryKey: ['seats', parsedEventId],
+    })
+  }
+  const handleHoldExpired = useCallback(() => {
+    setSelectedSeatIds([])
+    void queryClient.invalidateQueries({
+      queryKey: ['seats', parsedEventId],
+    })
+  }, [parsedEventId, queryClient])
+  const handleReleaseHold = useCallback(async () => {
+    if (!activeUserId || userHeldSeats.length === 0) {
+      return
+    }
+
+    const holdIds = userHeldSeats
+      .map((seat) => seat.hold_id)
+      .filter((holdId): holdId is number => holdId !== null)
+
+    await Promise.all(
+      holdIds.map((holdId) =>
+        releaseHold.mutateAsync({ holdId, eventId: parsedEventId }),
+      ),
+    )
+
+    setSelectedSeatIds([])
+    void queryClient.invalidateQueries({
+      queryKey: ['seats', parsedEventId],
+    })
+  }, [activeUserId, parsedEventId, queryClient, releaseHold, userHeldSeats])
+
+  useEffect(() => {
+    const resetSelection = window.setTimeout(() => {
+      setSelectedSeatIds([])
+    }, 0)
+    return () => window.clearTimeout(resetSelection)
+  }, [activeUserId])
 
   if (!Number.isInteger(parsedEventId)) return <Navigate to="/eventos" replace />
   if (seatsQuery.isLoading && !data) return <p className="mx-auto w-[calc(100%-3rem)] max-w-5xl py-12 text-slate-700 dark:text-slate-200">Cargando sala...</p>
@@ -102,7 +145,10 @@ function EventPage() {
       <div className="mt-6 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <p className="text-sm text-slate-600 dark:text-slate-300"><span className="font-semibold text-slate-900 dark:text-white">{selectedSeats.length}</span> butaca(s) seleccionada(s)</p>
         {selectedSeats.some((seat) => seat.expires_at) && (
-          <p>Retención: <Timer expiresAt={selectedSeats.find((seat) => seat.expires_at)?.expires_at} /></p>
+          <p>Retención: <Timer
+            expiresAt={selectedSeats.find((seat) => seat.expires_at)?.expires_at}
+            onExpire={handleHoldExpired}
+          /></p>
         )}
         <button
           type="button"
@@ -119,6 +165,38 @@ function EventPage() {
         >
           {holdSeats.isPending ? 'Reteniendo...' : 'Retener butacas'}
         </button>
+        {userHeldSeats.length > 0 && activeUser && (
+          <>
+            <button
+              type="button"
+              className="rounded-lg border border-emerald-600 px-4 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-500 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
+              disabled={confirmHolds.isPending}
+              onClick={() => {
+                confirmHolds.mutate(
+                  {
+                    user_id: activeUser.id,
+                    hold_ids: userHeldSeats.flatMap((seat) =>
+                      seat.hold_id === null ? [] : [seat.hold_id],
+                    ),
+                  },
+                  { onSuccess: handleHoldConfirmed },
+                )
+              }}
+            >
+              {confirmHolds.isPending ? 'Confirmando...' : 'Confirmar Compra'}
+            </button>
+            <button
+              type="button"
+              className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+              disabled={releaseHold.isPending}
+              onClick={() => {
+                void handleReleaseHold()
+              }}
+            >
+              {releaseHold.isPending ? 'Cancelando...' : 'Cancelar Retención'}
+            </button>
+          </>
+        )}
       </div>
       <ConflictModal
         error={conflictError}
@@ -134,7 +212,7 @@ function App() {
       <Navbar />
       <main>
         <Routes>
-          <Route path="/" element={<HomePage />} />
+          <Route path="/" element={<EventPage />} />
           <Route path="/eventos" element={<EventsPage />} />
           <Route path="/eventos/:eventId" element={<EventPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
